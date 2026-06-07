@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DevOps Day Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    padding: 32px 24px 48px;
+    transition: background 0.35s, color 0.35s;
+  }
+  body.dark  { background: #070710; color: #e2e8f0; }
+  body.light { background: #f4f6fb; color: #1a1a2e; }
+
+  #app { max-width: 660px; margin: 0 auto; }
+
+  /* ── header ── */
+  #header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+  #clock  { font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 700; letter-spacing: -2px; line-height: 1; transition: color 0.4s; }
+  #label  { font-size: 9px; letter-spacing: 4px; margin-bottom: 5px; }
+  #preview-badge { font-size: 8px; letter-spacing: 2px; color: #3b82f6; font-family: 'JetBrains Mono', monospace; animation: blink 1s infinite; display: none; margin-left: 10px; align-self: flex-end; }
+  #clock-row { display: flex; align-items: baseline; }
+  #right-col { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #block-badge { font-size: 9px; font-weight: 700; letter-spacing: 2px; padding: 4px 12px; border-radius: 4px; border: 1px solid transparent; display: none; }
+  #now-in-label { font-size: 8px; letter-spacing: 3px; margin-bottom: 6px; text-align: right; }
+  #next-label { font-size: 8px; letter-spacing: 1px; margin-top: 6px; text-align: right; }
+
+  /* ── theme button ── */
+  #theme-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px; cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px; letter-spacing: 2px;
+    border: 1px solid; transition: background 0.3s, border-color 0.3s, color 0.3s;
+    background: none;
+  }
+
+  /* ── timeline ── */
+  #timeline-wrap { margin-bottom: 10px; }
+  #timeline-bar  {
+    position: relative; height: 28px; border-radius: 6px;
+    overflow: hidden; border: 1px solid;
+    transition: background 0.35s, border-color 0.35s;
+  }
+  .seg { position: absolute; top: 0; height: 100%; border-right: 2px solid; transition: background 0.2s; }
+  #live-cursor { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 5; pointer-events: none; transition: background 0.4s, box-shadow 0.4s; }
+  #scrub-cursor { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 6; pointer-events: none; display: none; }
+
+  #tick-row { position: relative; height: 14px; margin-top: 3px; margin-bottom: 2px; }
+  .tick { position: absolute; transform: translateX(-50%); font-size: 7px; letter-spacing: 1px; font-family: 'JetBrains Mono', monospace; transition: color 0.35s; }
+
+  #slider-wrap { padding: 6px 0 2px; }
+  #scrubber {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 2px;
+    background: transparent; cursor: pointer; outline: none;
+  }
+  #scrubber::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    cursor: grab; transition: transform 0.15s;
+    border: 2px solid;
+  }
+  #scrubber:active::-webkit-slider-thumb { transform: scale(1.25); cursor: grabbing; }
+  #scrubber::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    cursor: grab; border: 2px solid;
+  }
+  #scrub-hint { text-align: center; font-size: 7px; letter-spacing: 2px; margin-top: 1px; transition: color 0.3s; }
+
+  /* ── block rows ── */
+  #blocks { display: flex; flex-direction: column; gap: 5px; margin-top: 20px; }
+  .block-row { display: flex; align-items: center; gap: 10px; transition: opacity 0.3s; }
+  .block-row.done { opacity: 0.3; }
+  .btime { width: 72px; flex-shrink: 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 10px; transition: color 0.3s, font-weight 0.3s; }
+  .btime.active { font-weight: 700; }
+  .bbar-wrap { flex: 1; }
+  .bbar {
+    border-radius: 5px; overflow: hidden; position: relative;
+    border: 1px solid; transition: height 0.25s, background 0.35s, border-color 0.3s, box-shadow 0.3s;
+  }
+  .bbar.inactive { height: 25px; }
+  .bbar.active   { height: 34px; }
+  .bfill { position: absolute; left: 0; top: 0; bottom: 0; transition: width 0.6s linear; }
+  .bfill.dragging { transition: width 0.05s; }
+  .bcontent { position: relative; z-index: 1; height: 100%; display: flex; align-items: center; padding: 0 10px; gap: 7px; }
+  .bicon { line-height: 1; }
+  .blabel { font-family: 'Space Mono', monospace; letter-spacing: 0.3px; transition: color 0.3s; }
+  .bright { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .tleft { font-family: 'JetBrains Mono', monospace; font-size: 8px; opacity: 0.4; letter-spacing: 1px; }
+  .tpct  { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; opacity: 0.8; letter-spacing: 1px; }
+  .tdur  { font-family: 'JetBrains Mono', monospace; font-size: 7px; letter-spacing: 1px; }
+  .bend  { width: 38px; flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 8px; transition: color 0.35s; }
+
+  /* ── legend ── */
+  #legend { margin-top: 28px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .leg-item { display: flex; align-items: center; gap: 5px; }
+  .leg-dot { width: 8px; height: 8px; border-radius: 2px; opacity: 0.6; }
+  .leg-label { font-size: 7px; letter-spacing: 2px; transition: color 0.35s; }
+  #footer { margin-top: 16px; font-size: 7px; letter-spacing: 2px; transition: color 0.35s; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+</head>
+<body class="dark">
+
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <div>
+      <div id="label">DEVOPS · DAY PLANNER</div>
+      <div id="clock-row">
+        <div id="clock">--:--</div>
+        <div id="preview-badge">PREVIEW</div>
+      </div>
+    </div>
+    <div id="right-col">
+      <button id="theme-btn" onclick="toggleTheme()"><span id="theme-icon">☀️</span><span id="theme-txt">LIGHT</span></button>
+      <div id="badge-wrap" style="display:none; text-align:right;">
+        <div id="now-in-label">NOW IN</div>
+        <div id="block-badge"></div>
+        <div id="next-label"></div>
+      </div>
+      <div id="no-block">Starts 08:30</div>
+    </div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div id="timeline-wrap">
+    <div id="timeline-bar">
+      <!-- segments injected by JS -->
+      <div id="live-cursor"></div>
+      <div id="scrub-cursor"></div>
+    </div>
+    <div id="tick-row"></div>
+    <div id="slider-wrap">
+      <input type="range" id="scrubber" min="510" max="990" step="1" value="510"/>
+    </div>
+    <div id="scrub-hint">DRAG SLIDER TO PREVIEW · SNAPS BACK AFTER 2s</div>
+  </div>
+
+  <!-- BLOCKS -->
+  <div id="blocks"></div>
+
+  <!-- LEGEND -->
+  <div id="legend"></div>
+  <div id="footer">LIVE · UPDATES EVERY 10S</div>
+</div>
+
+<script>
+const BLOCKS = [
+  { id:1,  start:"08:30", end:"08:45", label:"Plan & Triage",    type:"plan",     icon:"📋", desc:"Alerts, overnight incidents, set priorities" },
+  { id:2,  start:"08:45", end:"09:00", label:"Daily Standup",    type:"social",   icon:"🧑‍💻", desc:"Team sync" },
+  { id:3,  start:"09:00", end:"10:30", label:"Deep Work #1",     type:"deep",     icon:"⚙️",  desc:"Infrastructure, IaC, architecture" },
+  { id:4,  start:"10:30", end:"10:45", label:"Break",            type:"break",    icon:"☕", desc:"Step away, reset" },
+  { id:5,  start:"10:45", end:"12:00", label:"Deep Work #2",     type:"deep",     icon:"⚙️",  desc:"Complex problem solving" },
+  { id:6,  start:"12:00", end:"12:30", label:"Lunch",            type:"lunch",    icon:"🥗", desc:"Away from screen" },
+  { id:7,  start:"12:30", end:"13:00", label:"Social / Reviews", type:"social",   icon:"💬", desc:"Slack, PRs, async comms" },
+  { id:8,  start:"13:00", end:"14:30", label:"Deep Work #3",     type:"deep",     icon:"⚙️",  desc:"Scripting, automation, migrations" },
+  { id:9,  start:"14:30", end:"14:45", label:"Break",            type:"break",    icon:"☕", desc:"Recharge" },
+  { id:10, start:"14:45", end:"15:45", label:"Reactive / Ops",   type:"reactive", icon:"⚡", desc:"Monitoring, tickets, ad-hoc" },
+  { id:11, start:"15:45", end:"16:15", label:"Wrap-up",          type:"plan",     icon:"✅", desc:"Update tickets, prep tomorrow" },
+  { id:12, start:"16:15", end:"16:30", label:"Buffer",           type:"break",    icon:"🌀", desc:"Overflow or early finish" },
+];
+
+const TYPE_CONFIG = {
+  deep:     { color:"#10b981", label:"DEEP WORK"  },
+  social:   { color:"#f59e0b", label:"SOCIAL"     },
+  plan:     { color:"#3b82f6", label:"PLANNING"   },
+  break:    { color:"#a855f7", label:"BREAK"       },
+  lunch:    { color:"#ec4899", label:"LUNCH"       },
+  reactive: { color:"#f97316", label:"OPS"         },
+};
+
+const DAY_START = 510, DAY_END = 990, DAY_TOTAL = 480;
+
+function toMins(t) { const [h,m]=t.split(":").map(Number); return h*60+m; }
+function fmtMins(m) { return `${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`; }
+function timeLeft(v, b) {
+  const l = toMins(b.end) - v;
+  if (l<=0) return null;
+  if (l>=60) return `${Math.floor(l/60)}h ${l%60}m left`;
+  return `${l}m left`;
+}
+
+let dark = true;
+let scrub = null;
+let dragging = false;
+let resetTimer = null;
+
+// Theme tokens
+const DARK_T  = { bg:"#070710", surface:"#0d0d1a", surfaceAlt:"#0c0c1a", border:"#1a1a2e", borderAlt:"#0f0f1f", text:"#e2e8f0", textMuted:"#2a2a44", textDim:"#181830", barBorder:"#070710", thumb:"#e2e8f0" };
+const LIGHT_T = { bg:"#f4f6fb", surface:"#ffffff", surfaceAlt:"#f8f9fc", border:"#dde2ef", borderAlt:"#e8ecf5", text:"#1a1a2e", textMuted:"#8890aa", textDim:"#c0c8db", barBorder:"#f4f6fb", thumb:"#1a1a2e" };
+
+function T() { return dark ? DARK_T : LIGHT_T; }
+
+// ── Build static DOM once ──
+function buildTimeline() {
+  const bar = document.getElementById("timeline-bar");
+  BLOCKS.forEach(b => {
+    const left  = ((toMins(b.start) - DAY_START) / DAY_TOTAL * 100).toFixed(3);
+    const width = ((toMins(b.end) - toMins(b.start)) / DAY_TOTAL * 100).toFixed(3);
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    seg.id = `seg-${b.id}`;
+    seg.style.left  = `${left}%`;
+    seg.style.width = `calc(${width}% - 2px)`;
+    bar.insertBefore(seg, document.getElementById("live-cursor"));
+  });
+
+  const ticks = document.getElementById("tick-row");
+  [9,10,11,12,13,14,15,16].forEach(h => {
+    const pct = ((h*60 - DAY_START) / DAY_TOTAL * 100).toFixed(2);
+    const d = document.createElement("div");
+    d.className = "tick";
+    d.id = `tick-${h}`;
+    d.style.left = `${pct}%`;
+    d.textContent = `${h}:00`;
+    ticks.appendChild(d);
+  });
+}
+
+function buildBlocks() {
+  const container = document.getElementById("blocks");
+  BLOCKS.forEach(b => {
+    const row = document.createElement("div");
+    row.className = "block-row";
+    row.id = `row-${b.id}`;
+    row.innerHTML = `
+      <div class="btime" id="btime-${b.id}">${b.start}</div>
+      <div class="bbar-wrap">
+        <div class="bbar inactive" id="bbar-${b.id}">
+          <div class="bfill" id="bfill-${b.id}"></div>
+          <div class="bcontent">
+            <span class="bicon" id="bicon-${b.id}" style="font-size:10px">${b.icon}</span>
+            <span class="blabel" id="blabel-${b.id}" style="font-size:8.5px;font-weight:400">${b.label}</span>
+            <div class="bright">
+              <span class="tleft" id="tleft-${b.id}" style="display:none"></span>
+              <span class="tpct"  id="tpct-${b.id}"  style="display:none"></span>
+              <span class="tdur"  id="tdur-${b.id}">${toMins(b.end)-toMins(b.start)}m</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bend" id="bend-${b.id}">${b.end}</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function buildLegend() {
+  const leg = document.getElementById("legend");
+  Object.entries(TYPE_CONFIG).forEach(([k,v]) => {
+    const item = document.createElement("div");
+    item.className = "leg-item";
+    item.innerHTML = `<div class="leg-dot" style="background:${v.color}"></div><span class="leg-label" id="leg-${k}">${v.label}</span>`;
+    leg.appendChild(item);
+  });
+}
+
+// ── Apply theme chrome ──
+function applyTheme() {
+  const t = T();
+  document.body.className = dark ? "dark" : "light";
+  document.getElementById("theme-icon").textContent = dark ? "☀️" : "🌙";
+  document.getElementById("theme-txt").textContent  = dark ? "LIGHT" : "DARK";
+
+  const btn = document.getElementById("theme-btn");
+  btn.style.borderColor  = t.border;
+  btn.style.color        = t.textMuted;
+  btn.style.background   = t.surface;
+
+  document.getElementById("label").style.color  = t.textMuted;
+  document.getElementById("footer").style.color = t.textDim;
+  document.getElementById("scrub-hint").style.color = t.textDim;
+
+  document.getElementById("timeline-bar").style.background   = t.surface;
+  document.getElementById("timeline-bar").style.borderColor  = t.border;
+
+  document.querySelectorAll(".tick").forEach(el => el.style.color = t.textMuted);
+  document.querySelectorAll(".leg-label").forEach(el => el.style.color = t.textMuted);
+
+  // slider thumb via injected style
+  let styleEl = document.getElementById("thumb-style");
+  if (!styleEl) { styleEl = document.createElement("style"); styleEl.id = "thumb-style"; document.head.appendChild(styleEl); }
+  styleEl.textContent = `
+    #scrubber::-webkit-slider-thumb { background:${t.thumb}!important; border-color:${t.bg}!important; box-shadow:0 0 8px ${t.thumb}88; }
+    #scrubber::-moz-range-thumb     { background:${t.thumb}!important; border-color:${t.bg}!important; }
+  `;
+}
+
+function toggleTheme() {
+  dark = !dark;
+  applyTheme();
+  render();
+}
+
+// ── Main render ──
+function render() {
+  const now = new Date();
+  const realMins = now.getHours()*60 + now.getMinutes();
+  const viewMins = scrub !== null ? scrub : realMins;
+  const isLive   = scrub === null;
+  const t = T();
+
+  // Clock
+  const clockEl = document.getElementById("clock");
+  const timeStr = isLive
+    ? now.toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"})
+    : fmtMins(viewMins);
+
+  // Current block
+  const curIdx = BLOCKS.findIndex(b => viewMins >= toMins(b.start) && viewMins < toMins(b.end));
+  const cur    = curIdx >= 0 ? BLOCKS[curIdx] : null;
+  const nxt    = cur ? BLOCKS[curIdx+1] : null;
+  const cfg    = cur ? TYPE_CONFIG[cur.type] : null;
+  const accent = cfg ? cfg.color : "#3b82f6";
+
+  clockEl.textContent = timeStr;
+  clockEl.style.color = accent;
+
+  const prevBadge = document.getElementById("preview-badge");
+  prevBadge.style.display = isLive ? "none" : "inline-block";
+
+  // Badge
+  const badgeWrap = document.getElementById("badge-wrap");
+  const noBlock   = document.getElementById("no-block");
+  if (cur && cfg) {
+    badgeWrap.style.display = "block";
+    noBlock.style.display   = "none";
+    const badge = document.getElementById("block-badge");
+    badge.textContent = cfg.label;
+    badge.style.color       = cfg.color;
+    badge.style.borderColor = `${cfg.color}55`;
+    badge.style.background  = `${cfg.color}18`;
+    badge.style.boxShadow   = `0 0 14px ${cfg.color}22`;
+    document.getElementById("now-in-label").style.color = t.textMuted;
+    document.getElementById("next-label").style.color   = t.textMuted;
+    document.getElementById("next-label").textContent   = nxt ? `next → ${nxt.label} · ${nxt.start}` : "";
+  } else {
+    badgeWrap.style.display = "none";
+    noBlock.style.display   = "block";
+    noBlock.style.color     = t.textMuted;
+    noBlock.textContent     = viewMins < DAY_START ? "Starts 08:30" : "Day complete ✓";
+  }
+
+  // Timeline cursor
+  const realPct = Math.max(0, Math.min(100, (realMins - DAY_START) / DAY_TOTAL * 100));
+  const viewPct = Math.max(0, Math.min(100, (viewMins - DAY_START) / DAY_TOTAL * 100));
+  const liveCursor = document.getElementById("live-cursor");
+  liveCursor.style.left       = `${realPct}%`;
+  liveCursor.style.background = isLive ? accent : `${t.textMuted}44`;
+  liveCursor.style.boxShadow  = isLive ? `0 0 6px ${accent}` : "none";
+
+  const scrubCursor = document.getElementById("scrub-cursor");
+  if (!isLive) {
+    scrubCursor.style.display    = "block";
+    scrubCursor.style.left       = `${viewPct}%`;
+    scrubCursor.style.background = dark ? "#e2e8f0cc" : "#1a1a2ecc";
+  } else {
+    scrubCursor.style.display = "none";
+  }
+
+  // Segments
+  BLOCKS.forEach(b => {
+    const seg      = document.getElementById(`seg-${b.id}`);
+    const c        = TYPE_CONFIG[b.type].color;
+    const isActive = cur?.id === b.id;
+    const isDone   = viewMins >= toMins(b.end);
+    seg.style.borderRightColor = t.barBorder;
+    seg.style.background = isDone
+      ? `${c}${dark?"22":"28"}`
+      : isActive
+        ? `linear-gradient(90deg,${c}${dark?"55":"60"},${c}${dark?"99":"bb"})`
+        : `${c}${dark?"18":"22"}`;
+    seg.style.boxShadow = isActive ? `inset 0 0 12px ${c}44` : "none";
+  });
+
+  // Block rows
+  BLOCKS.forEach(b => {
+    const start    = toMins(b.start);
+    const end      = toMins(b.end);
+    const isActive = viewMins >= start && viewMins < end;
+    const isDone   = viewMins >= end;
+    const pct      = isActive ? Math.round((viewMins - start) / (end - start) * 100) : 0;
+    const c        = TYPE_CONFIG[b.type];
+    const tl       = timeLeft(viewMins, b);
+
+    const row    = document.getElementById(`row-${b.id}`);
+    const bbar   = document.getElementById(`bbar-${b.id}`);
+    const bfill  = document.getElementById(`bfill-${b.id}`);
+    const btimeEl= document.getElementById(`btime-${b.id}`);
+    const blabelEl=document.getElementById(`blabel-${b.id}`);
+    const biconEl= document.getElementById(`bicon-${b.id}`);
+    const tleftEl= document.getElementById(`tleft-${b.id}`);
+    const tpctEl = document.getElementById(`tpct-${b.id}`);
+    const tdurEl = document.getElementById(`tdur-${b.id}`);
+    const bendEl = document.getElementById(`bend-${b.id}`);
+
+    row.style.opacity = isDone ? (dark ? "0.28" : "0.35") : "1";
+
+    // time label
+    btimeEl.style.color      = isActive ? t.text : t.textMuted;
+    btimeEl.style.fontWeight = isActive ? "700" : "400";
+
+    // bar
+    bbar.className = `bbar ${isActive ? "active" : "inactive"}`;
+    bbar.style.background   = isActive ? `${c.color}14` : t.surfaceAlt;
+    bbar.style.borderColor  = isActive ? `${c.color}44` : t.borderAlt;
+    bbar.style.boxShadow    = isActive ? `0 0 16px ${c.color}18` : "none";
+
+    // fill
+    bfill.style.width = isDone ? "100%" : isActive ? `${pct}%` : "0%";
+    bfill.style.background = isDone
+      ? `${c.color}${dark?"10":"14"}`
+      : `linear-gradient(90deg,${c.color}${dark?"28":"30"},${c.color}${dark?"60":"70"})`;
+    bfill.className = `bfill${dragging ? " dragging" : ""}`;
+
+    // icon + label
+    biconEl.style.fontSize = isActive ? "13px" : "10px";
+    blabelEl.style.fontSize   = isActive ? "10px" : "8.5px";
+    blabelEl.style.fontWeight = isActive ? "700"  : "400";
+    blabelEl.style.color      = isActive ? c.color : t.textMuted;
+
+    // time left
+    tleftEl.style.display = (isActive && tl) ? "inline" : "none";
+    tleftEl.textContent   = tl || "";
+    tleftEl.style.color   = c.color;
+
+    // pct
+    tpctEl.style.display = isActive ? "inline" : "none";
+    tpctEl.textContent   = `${pct}%`;
+    tpctEl.style.color   = c.color;
+
+    // duration
+    tdurEl.style.display = (!isActive && !isDone) ? "inline" : "none";
+    tdurEl.style.color   = t.textDim;
+
+    bendEl.style.color = t.textDim;
+  });
+
+  // scrub hint
+  const hint = document.getElementById("scrub-hint");
+  hint.style.color = dragging ? "#3b82f666" : t.textDim;
+  hint.textContent = dragging ? "RELEASE TO SNAP BACK TO NOW" : "DRAG SLIDER TO PREVIEW · SNAPS BACK AFTER 2s";
+}
+
+// ── Slider events ──
+const slider = document.getElementById("scrubber");
+slider.addEventListener("input", e => {
+  clearTimeout(resetTimer);
+  dragging = true;
+  scrub = Number(e.target.value);
+  render();
+});
+slider.addEventListener("change", e => {
+  dragging = false;
+  resetTimer = setTimeout(() => { scrub = null; render(); }, 1800);
+  render();
+});
+
+// ── Init ──
+buildTimeline();
+buildBlocks();
+buildLegend();
+applyTheme();
+render();
+setInterval(render, 10000);
+
+// Set slider to current time on load
+const now0 = new Date();
+slider.value = Math.min(DAY_END, Math.max(DAY_START, now0.getHours()*60 + now0.getMinutes()));
+</script>
+</body>
+</html>
