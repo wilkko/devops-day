@@ -1,1 +1,1 @@
-Page to for DevOps engineer to track focus.
+Page for a DevOps engineer to track focus.
